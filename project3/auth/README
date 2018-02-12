@@ -1,0 +1,27 @@
+In order to facilitate easy grading and testing, the specs are buggy:
+the timeout for an authentication token is set when the token is
+created and not affected when the token is used.  A more practical
+specification would have the timeout being reset each time the token
+is used, so that the timeout only applies to inactivity.
+
+If these buggy specs are used to build authentication for a web site
+then any login on the web site would timeout a fixed amount of time
+after the login irrespective of whether the login is active.
+
+These buggy specs facilitate a very simple implementation for the
+auth-token.  Specifically it is formed by encrypting its absolute
+expiry-time concatenated with the user id.  Hence the auth-token is
+completely self contained.  To check whether a auth-token is valid,
+simply decrypt it and verify that the current time is before the
+expiry time and that the id encoded in the token matches the user-id.
+
+An alternate implementation would generate a random auth-token and
+store it in a db along with a user-id and its expiry time.  Then
+validating a received auth-token would require looking up in the
+db and then do the same comparisons as above with the expiry time
+and user-id recovered from the db.
+
+It would not be possible to adapt the first implementation to
+one where the timeout refers to max inactivity time, but it would
+be easy to adapt the second implementation.
+

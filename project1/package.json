@@ -1,0 +1,23 @@
+{
+  "name": "db_ops",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "bin": {
+    "db_ops": "./db_ops.js"
+  },
+  "files": [
+    "db_ops.js",
+    "db_ops_lib.js",
+    "README"
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mongodb": "^2.2.31"
+  }
+}

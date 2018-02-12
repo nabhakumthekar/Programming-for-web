@@ -1,0 +1,14 @@
+The following points are worth noting:
+
+  + Validation and submission for login and registration uses a common
+    data-driven approach.
+
+  + Does length + digit check on password field for login form; not
+    required as per specs.
+
+After validation of a form succeeds, form is submitted to backend web
+services which return a promise resolving to an object
+`result` with a `status` field.  If the `status` is `error`, then the
+form is redisplayed with `formError` set to `result.error`.  Otherwise
+`status` must be `ok` and the App component is set to `result.next`.  This
+is similar to the server-side PRG pattern.

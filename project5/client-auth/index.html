@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>User Authentication App</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/react@16/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6.15.0/babel.min.js"></script>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+  </head>
+  <body>
+    <div id="root">goodbye</div>
+  <script type="text/babel">
+(function() {
+
+/************************* Global Constants ****************************/
+const OK = 'ok';
+const ERROR = 'error';
+const AUTH_KEY = 'auth';  
+
+
+/****************************** Utilities ******************************/
+
+function Errors() { }
+Errors.prototype.hasErrors = function() {
+  return Object.keys(this).find((k) => this[k]);
+};
+
+function AuthInfo() {
+  let id = null, authToken = null;
+  if (arguments.length === 2) {
+    [id, authToken] = arguments;
+    const storedAuth = JSON.stringify({id: id, authToken: authToken});
+    localStorage.setItem(AUTH_KEY, storedAuth);
+  }
+  else {
+    const storedAuth = localStorage.getItem(AUTH_KEY);
+    if (storedAuth) {
+      try {
+        ({ id, authToken } = JSON.parse(storedAuth));
+      }
+      catch (err) {
+        console.log(`bad storedAuth: ${storedAuth}`);
+      }
+    }
+  }
+  this.id = id;
+  this.authToken = authToken;
+}
+
+/************************* Web Service Facade **************************/
+
+function AuthService() {
+  const WS_URL = 'https://localhost:1236';
+
+  function getWsUrl() {
+    const params = (new URL(document.location)).searchParams;
+    return params.get('ws-url') || WS_URL;
+  }
+
+  this.baseUrl = getWsUrl();
+
+  //All action functions return promises.
+
+  this.register = function(id, pw, info) {
+    return axios.put(`${this.baseUrl}/users/${id}?pw=${pw}`,
+                     info, { maxRedirects: 0 })
+      .then((response) => response.data)
+      .catch(function(err) {
+        const status = err.response.status;
+        if (status === 303) {
+          return err.response.data;
+        }
+        else if (status === 401) { //workaround as axios follows redirect
+          return {
+            status: "EXISTS",
+            "info": `user ${id} already exists`
+          };
+        }
+        else {
+          throw err;
+        }
+      });
+  }
+
+  this.login = function(id, pw) {
+    return axios.put(`${this.baseUrl}/users/${id}/auth`,
+                     { pw: pw }, { maxRedirects: 0 })
+      .then((response) => response.data)
+      .catch(function(err) {
+        const status = err.response.status;
+        if (status === 401) {
+	  return {
+	    status: err.response.data.status,
+	    info: `Invalid password for user "${id}"`
+	  }
+	}
+	else if (status === 404) {
+          return err.response.data;
+        }
+        else {
+          throw err;
+        }
+      });
+  }
+
+  this.info = function(id, authToken) {
+    return axios.request({ url: `${this.baseUrl}/users/${id}`,
+                           method: 'get',
+                           headers: {
+                             Authorization: `Bearer ${authToken}`
+                           }
+                         })
+      .then((response) => response.data)
+      .catch(function(err) {
+        const status = err.response.status;
+        if (status === 401 || status === 404) {
+          return err.response.data;
+        }
+        else {
+          throw err;
+        }
+      });
+
+  }
+} //function AuthService
+
+/**************************** Account Access ***************************/
+
+function accountPromise(app) {
+  if (!app.auth || !app.auth.id || !app.auth.authToken) {
+    return Promise.resolve({status: ERROR, error: ''});
+  }
+  else {
+    return app.ws.info(app.auth.id, app.auth.authToken)
+      .then(function(result) {
+        if (result.status) {
+          return { status: ERROR, error: '' };
+        }
+        else {
+          app.userInfo = result;
+          return { status: OK, next: 'Account' };
+        }
+      })
+      .catch(function(err) {
+        console.log(err);
+        return { status: ERROR, error: '' };
+      });
+  }
+}
+
+/**************** Login / Registration Action Routines *****************/
+  
+function loginRegister(app, id, promise) {
+  return promise
+    .then(function(result) {
+      if (result.status === 'EXISTS') {
+        return {
+          status: ERROR,
+          error: `An account already exists for "${id}"`
+        };
+      }
+      else if (result.status.match(/error/i)) {
+        return {
+          status: ERROR,
+          error: result.info
+        };
+      }
+      else {
+        app.auth = new AuthInfo(id, result.authToken);
+        return accountPromise(app);
+      }
+    })
+    .catch(function(err) {
+      console.log(err);
+        return {
+          status: ERROR,
+          error: 'Server error'
+        };
+    });
+}
+
+function register(app, values) {
+  const id = values.email;
+  const info = {
+    firstName: values.firstName,
+    lastName: values.lastName
+  };
+  return loginRegister(app, id, app.ws.register(id, values.password, info));
+}
+
+function login(app, values) {
+  const id = values.email;
+  return loginRegister(app, id, app.ws.login(id, values.password));
+}
+
+
+/*************************** Form Definitions **************************/
+
+const MIN_PW_LENGTH = 8;  
+const LOGIN_FORM = {
+  title: 'User Login',
+  action: 'Login',
+  linkAction: 'Register',
+  submitFn: login,
+  infos: [
+    {
+      name: 'email',
+      friendlyName: 'Email Address',
+      checkFn:  (v, info) => v.match(/^.+\@.+$/),
+      errorFn: (v, info) =>
+        `The ${info.friendlyName} must be of the form "user@domain".`
+    },
+    {
+      name: 'password',
+      friendlyName: 'Password',
+      type: 'password',
+      checkFn:  (v, info) => //not necessary as per specs
+      v.length >= MIN_PW_LENGTH && v.match(/\d/) && !v.match(/\s/),
+      errorFn: (v, info) =>
+        `The ${info.friendlyName} must contain at least ${MIN_PW_LENGTH} ` +
+        `non-space characters with at least one digit.`
+    },
+  ],
+};
+
+const REGISTRATION_FORM = {
+  title: 'User Registration',
+  action: 'Register',
+  linkAction: 'Login',
+  submitFn: register,
+  infos: [
+    {
+      name: 'firstName',
+      friendlyName: 'First Name'
+    },
+    {
+      name: 'lastName',
+      friendlyName: 'Last Name'
+    },
+    {
+      name: 'email',
+      friendlyName: 'Email Address',
+      checkFn:  (v, info) => v.match(/^.+\@.+$/),
+      errorFn: (v, info) =>
+        `The ${info.friendlyName} must be of the form "user@domain".`
+    },
+    {
+      name: 'password',
+      friendlyName: 'Password',
+      type: 'password',
+      checkFn:  (v, info) =>
+        v.length >= MIN_PW_LENGTH && v.match(/\d/) && !v.match(/\s/),
+      errorFn: (v, info) =>
+        `The ${info.friendlyName} must contain at least ${MIN_PW_LENGTH} ` +
+        `non-space characters with at least one digit.`
+    },
+    {
+      name: 'confirmPassword',
+      friendlyName: 'Confirm Password',
+      type: 'password',
+    }     
+  ],
+  multiCheckers: [
+    {
+      names: [ 'confirmPassword', 'password' ],
+      multiCheckFn: (values, infos) =>
+        values.password === values.confirmPassword,
+      multiErrorFn: (values, infos) =>
+        `The ${infos.confirmPassword.friendlyName} and ` +
+        `${infos.password.friendlyName} fields do not match`
+    }
+  ]
+};
+
+function setMappedInfos(form) {
+  const mappedInfos = {};
+  form.infos.forEach((info) => mappedInfos[info.name] = info);
+  form.mappedInfos = mappedInfos;
+  return form;
+}
+  
+const FORMS = {
+  Login: setMappedInfos(LOGIN_FORM),
+  Register: setMappedInfos(REGISTRATION_FORM)
+};
+
+/************************* General Form Component **********************/
+  
+class Form extends React.Component {
+
+  constructor(props) {
+    super(props);
+    const values = {};
+    this.form = FORMS[props.name];
+    for (const k of this.form.infos) { values[k.name] = ''; }
+    this.state = { values: values, errors: new Errors() };
+    this.onClickHandler = this.onClickHandler.bind(this);
+    this.onBlurHandler = this.onBlurHandler.bind(this);
+    this.onChangeHandler = this.onChangeHandler.bind(this);
+    this.onSubmitHandler = this.onSubmitHandler.bind(this);
+  }
+
+  onClickHandler(event) {
+    event.preventDefault();
+    this.props.app.setActive(this.form.linkAction);
+  }
+
+  onChangeHandler(event) {
+    const name = event.target.name;
+    const value = event.target.value;
+    this.state.values[name] = value;
+    this.setState({values: this.state.values});
+    //this.check(name, value);
+    return false;
+  }
+
+  onBlurHandler(event) {
+    const name = event.target.name;
+    this.check(name, this.state.values[name]);
+  }
+
+  onSubmitHandler(event) {
+    const self = this;
+    event.preventDefault();
+    self.state.errors.formError = '';
+    this.form.infos.forEach(function (info) {
+      self.check(info.name, self.state.values[info.name]);
+    });
+    if (!self.state.errors.hasErrors()) {
+      self.form.submitFn(self.props.app, self.state.values)
+        .then(function(result) {
+	  if (result.status === OK) {
+	    self.props.app.setActive(result.next);
+	  }
+	  else {
+            self.state.errors.formError = result.error;
+            self.setState({errors: self.state.errors});
+	  }
+	})
+        .catch(function(err) {
+          self.state.errors.formError = err;
+          self.setState({errors: self.state.errors});
+        });
+    }
+  }
+
+  check(name, value) {
+    let err = '';
+    const info = this.form.infos.find((info) => info.name === name);
+    if (!info.isOptional &&
+        (typeof value === 'undefined' || value === null ||
+         value.trim().length === 0)) {
+      err = `"${info.friendlyName}" field cannot be empty`;
+    }
+    else if (info.checkFn && !info.checkFn(value, info)) {
+      err = info.errorFn(value, info);
+    }
+    this.state.errors[name] = err;
+    if (!err) this.multiCheck(name);
+    this.setState({errors: this.state.errors});
+  }
+
+  multiCheck(name) {
+    const multiCheckers = this.form.multiCheckers || [];
+    const infos = {};
+    this.form.infos.forEach((info) => infos[info.name] = info);
+    const values = this.state.values;
+    const errors = this.state.errors;
+    multiCheckers.forEach(function(m) {
+      if (m.names.find((n) => n === name) &&
+          m.names.every((n) => values[n]) &&
+          !m.multiCheckFn(values, infos)) {
+            errors[m.names[0]] = m.multiErrorFn(values, infos);
+      }
+    });
+  }
+
+  render() {
+    const { title, action, linkAction, infos } = this.form;
+    const values = this.state.values;
+    const errors = this.state.errors;
+    const self = this;
+    const fields = infos.map(function(info) {
+      const type = info.type || 'text';
+      return (
+          <label key={info.name}>
+            <span className="label">{info.friendlyName}</span>
+            <input name={info.name} className="control"
+                   onBlur={self.onBlurHandler} onChange={self.onChangeHandler}
+                   value={self.state.values[info.name]} type={type} />
+            <br />
+            <span className="error">{errors[info.name]}<br /></span>
+          </label>);
+    });
+    return (
+        <div>
+          <h1>{title}</h1>
+          <p className="error">{errors.formError}</p>
+          <form onSubmit={this.onSubmitHandler}>
+            {fields}
+            <input name="submit" type="submit" 
+                   value={action} className="control" />
+          </form> 
+        <p><a href="#" onClick={this.onClickHandler}>{linkAction}</a></p>
+        </div>
+    );
+  }
+
+}
+
+/************************* Account Components **************************/  
+
+class Logout extends React.Component {
+
+  constructor(props) {
+    super(props);
+    this.onClickHandler = this.onClickHandler.bind(this);
+  }
+
+  onClickHandler(event) {
+    event.preventDefault();
+    localStorage.removeItem(AUTH_KEY);
+    this.props.app.setActive('Login');
+  }
+
+  render() {
+    return <p><a href="#" onClick={this.onClickHandler}>Logout</a></p>;
+  }
+}
+  
+function Account(props) {
+  const info = props.app.userInfo;
+  return (
+    <div>
+      <p>
+        <span className="label">First Name</span> {info.firstName}<br/>
+        <span className="label">Last Name</span> {info.lastName}<br/>
+      </p>
+      <Logout app={props.app}/>
+    </div>
+  );
+}
+ 
+/********************** Top Level Container App ************************/
+
+class App extends React.Component {
+  constructor(props) {
+    super(props);
+    this.ws = props.ws;
+    this.auth = new AuthInfo();
+    this.state = {
+      active: <Form key="Login" name="Login" app={this}/>
+    };
+    console.log(JSON.stringify(this.auth));
+  }
+
+  componentDidMount() {
+    const self = this;
+    accountPromise(self)
+      .then(function(result) {
+        if (result.status === OK) {
+          self.setActive(result.next);
+        }
+      })
+      .catch((err) => console.log(err));
+  }
+
+  setActive(component) {
+    let active;
+    if (component === 'Account') {
+      active = <Account info={this.userInfo} app={this} />;
+    }
+    else {
+      active = <Form name={component} key={component} app={this} />
+    }
+    this.setState({active: active});
+  }
+
+  render() {
+    return (
+      <div>
+        {this.state.active}<br/>
+      </div>
+    );
+  }
+} //class App
+  
+
+const ws = new AuthService();
+ReactDOM.render(
+  <App ws={ws}/>,
+  document.getElementById('root')
+);
+  
+})(); //end IIFE
+  </script>
+  
+  </body>
+</html>

@@ -1,0 +1,22 @@
+[
+  { "id": "homer@example.com",
+    "firstName": "Homer",
+    "lastName": "Simpson",
+    "dateOfBirth": "1990-07-15"
+  },
+  { "id": "marge@example.com",
+    "firstName": "Marge",
+    "lastName": "Simpson",
+    "dateOfBirth": "1992-09-14"
+  },
+  { "id": "bart@example.com",
+    "firstName": "Bart",
+    "lastName": "Simpson",
+    "dateOfBirth": "2006-11-14"
+  },
+  { "id": "lisa@example.com",
+    "firstName": "Lisa",
+    "lastName": "Simpson",
+    "dateOfBirth": "2009-11-14"
+  }
+]

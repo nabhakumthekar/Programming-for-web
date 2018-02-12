@@ -1,0 +1,13 @@
+The following points are worth noting:
+
+  + Tests are provided for interface to backend web services.
+
+  + Validation for login and registration uses a common data-driven
+    approach.
+
+  + Does length + digit check on password field for login form; not
+    required as per specs.
+
+  + Bad password for login displays backend error message; not entirely
+    appropriate.
+    

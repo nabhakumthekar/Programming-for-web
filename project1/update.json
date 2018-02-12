@@ -1,0 +1,6 @@
+{
+  "op": "update",
+  "collection": "test",
+  "args": { },
+  "fn": [ "x", "{ return x['b'] ? { b: 42 } : x; }" ]
+}

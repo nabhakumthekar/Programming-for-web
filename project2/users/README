@@ -1,0 +1,10 @@
+Note that the provided data object USER is put into the db as { _id:
+ID, _data: USER }, where ID is the ID specified in the URL.  So the
+USER object can contain anything including another _id field; it need
+not even contain ID.
+
+To automatically initialize db with model/users_data.json on start of
+server uncomment users.initUsers() line in index.js.
+
+
+
